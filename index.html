@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restricted Public Meeting Room Scheduler</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+        /* Custom styling for date input to ensure the date picker icon is visible */
+        #date-selector {
+            appearance: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <div id="app" class="max-w-4xl mx-auto bg-white shadow-2xl rounded-xl p-4 sm:p-8">
+
+        <h1 class="text-3xl font-bold text-gray-900 mb-6 border-b pb-2 text-center">
+            Shared Meeting Room Scheduler
+        </h1>
+
+        <!-- Auth Info and User ID -->
+        <div id="auth-info" class="text-sm text-gray-600 mb-6 p-3 bg-blue-50 rounded-lg border border-blue-200 flex justify-between items-center">
+            <span class="font-bold text-blue-700">Current User:</span>
+            <span id="user-id-display" class="font-medium text-gray-800">Connecting...</span>
+        </div>
+
+        <!-- System Status/Cleanup Message -->
+        <div id="system-status" class="text-sm text-center p-2 rounded-lg bg-yellow-100 text-yellow-800 border border-yellow-300 mb-6">
+            <span id="cleanup-message">Initializing...</span>
+        </div>
+
+        <!-- Booking Form Inputs -->
+        <div class="flex flex-col gap-6 mb-8 p-6 bg-emerald-50 rounded-xl border border-emerald-200 shadow-inner">
+            <h2 class="text-xl font-bold text-emerald-800 border-b pb-2">New Booking Details</h2>
+            
+            <!-- Row 1: Name and Date -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="flex flex-col space-y-1">
+                    <label for="user-name-input" class="font-bold text-gray-700">Your Name (Required)*</label>
+                    <input type="text" id="user-name-input" placeholder="Enter your name" required class="p-3 border rounded-lg text-base focus:ring-blue-500 focus:border-blue-500 shadow-sm">
+                </div>
+                
+                <div class="flex flex-col space-y-1">
+                    <label for="date-selector" class="font-bold text-gray-700">Date (Today + 2 Days Max)</label>
+                    <input type="date" id="date-selector" class="p-3 border border-gray-300 rounded-lg w-full bg-white focus:ring-emerald-500 focus:border-emerald-500 shadow-sm">
+                </div>
+            </div>
+            
+            <!-- Row 2: Room and Time Range -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                
+                <div class="flex flex-col space-y-1">
+                    <label for="room-selector" class="font-bold text-gray-700">Room(s)</label>
+                    <select id="room-selector" class="p-3 border border-gray-300 rounded-lg w-full bg-white focus:ring-emerald-500 focus:border-emerald-500 shadow-sm">
+                        <option value="A">Room A</option>
+                        <option value="B">Room B</option>
+                        <option value="C">Room C</option>
+                        <option value="D">Room D</option>
+                        <option value="A+B">Rooms A & B (Combined)</option>
+                    </select>
+                </div>
+                
+                <div class="flex flex-col space-y-1">
+                    <label for="start-time-selector" class="font-bold text-gray-700">Start Time</label>
+                    <select id="start-time-selector" class="p-3 border border-gray-300 rounded-lg w-full bg-white focus:ring-emerald-500 focus:border-emerald-500 shadow-sm">
+                        <!-- Options filled by JS -->
+                    </select>
+                </div>
+
+                <div class="flex flex-col space-y-1">
+                    <label for="end-time-selector" class="font-bold text-gray-700">End Time</label>
+                    <select id="end-time-selector" class="p-3 border border-gray-300 rounded-lg w-full bg-white focus:ring-emerald-500 focus:border-emerald-500 shadow-sm">
+                        <!-- Options filled by JS -->
+                    </select>
+                </div>
+            </div>
+
+            <!-- Validation/Status -->
+            <div id="selection-status" class="text-gray-700 font-medium p-3 rounded-lg text-center bg-white border">
+                <p>Enter your details and click 'Check Availability & Book'.</p>
+            </div>
+            
+            <!-- Booking Button -->
+            <button id="book-button"
+                    class="px-8 py-3 bg-emerald-600 text-white font-bold rounded-full text-lg shadow-lg hover:bg-emerald-700 disabled:opacity-50 transition duration-150 ease-in-out w-full"
+                    disabled>
+                Check Availability & Book
+            </button>
+            <div id="message-box" class="mt-2 text-center p-3 rounded-lg hidden" role="alert"></div>
+
+        </div>
+
+
+        <!-- All Bookings Table -->
+        <div class="mt-10">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">All Active Bookings for <span id="current-date-display">...</span></h2>
+            <div id="all-bookings-container" class="bg-white shadow-lg rounded-xl overflow-x-auto border">
+                <p id="no-bookings-message" class="p-4 text-gray-500 text-center">Loading bookings...</p>
+                <!-- Bookings table will be rendered here -->
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div id="confirmation-modal" class="modal-overlay hidden" aria-modal="true" role="dialog">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 transform transition-all duration-300 scale-100">
+            <div class="flex items-center space-x-3 mb-4">
+                <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.332 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                <h3 id="modal-title" class="text-xl font-bold text-gray-900">Confirm Cancellation</h3>
+            </div>
+            <p id="modal-message" class="text-gray-600 mb-6"></p>
+            <div class="flex justify-end space-x-3">
+                <button id="modal-cancel-btn" class="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition">
+                    Keep Booking
+                </button>
+                <button id="modal-confirm-btn" class="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition">
+                    Yes, Cancel It
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Firebase SDK Imports and Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, query, where, getDocs, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Polyfill for randomUUID if not present
+        const crypto = window.crypto || window.msCrypto;
+        if (typeof crypto.randomUUID === 'undefined') {
+            crypto.randomUUID = () => {
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+            };
+        }
+
+        // Global Firebase Configuration and App ID (Provided by Canvas)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-room-booking-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { /* Mock config for local testing */ };
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        // Enable debug logging for Firestore
+        setLogLevel('debug');
+
+        // CONSTANTS
+        const COLLECTION_PATH = `/artifacts/${appId}/public/data/bookings`;
+        
+        // DOM Elements
+        const dateSelector = document.getElementById('date-selector');
+        const roomSelector = document.getElementById('room-selector');
+        const startTimeSelector = document.getElementById('start-time-selector');
+        const endTimeSelector = document.getElementById('end-time-selector');
+        const bookButton = document.getElementById('book-button');
+        const selectionStatus = document.getElementById('selection-status');
+        const messageBox = document.getElementById('message-box');
+        const userIdDisplay = document.getElementById('user-id-display');
+        const userNameInput = document.getElementById('user-name-input');
+        const allBookingsContainer = document.getElementById('all-bookings-container');
+        const currentDateDisplay = document.getElementById('current-date-display');
+        const cleanupMessage = document.getElementById('cleanup-message');
+        
+        // Modal Elements
+        const confirmationModal = document.getElementById('confirmation-modal');
+        const modalMessage = document.getElementById('modal-message');
+        const modalConfirmBtn = document.getElementById('modal-confirm-btn');
+        const modalCancelBtn = document.getElementById('modal-cancel-btn');
+
+
+        // STATE
+        let currentUserId = null;
+        let selectedDate = null;
+        let currentBookings = {}; 
+        let isAuthReady = false;
+        let allBookingsGrouped = {}; 
+
+        // --- DATE UTILITIES ---
+
+        /**
+         * Returns a date object shifted by a number of days.
+         */
+        function getDateOffset(days) {
+            const date = new Date();
+            date.setDate(date.getDate() + days);
+            return date;
+        }
+
+        /**
+         * Formats a Date object to YYYY-MM-DD string.
+         */
+        function formatDate(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        /**
+         * Generates all 30-minute time options for dropdowns (8:00 AM to 10:00 PM END time).
+         */
+        function generateTimeOptions() {
+            const options = [];
+            const startTime = 8 * 60; // 8:00 AM
+            const endTime = 22 * 60;   // 10:00 PM (end time)
+
+            for (let totalMinutes = startTime; totalMinutes <= endTime; totalMinutes += 30) {
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = totalMinutes % 60;
+                const timeString = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+                options.push(timeString);
+            }
+            return options;
+        }
+        
+        /**
+         * Converts HH:MM string to total minutes from midnight.
+         */
+        function timeToMinutes(timeString) {
+            const [hours, minutes] = timeString.split(':').map(Number);
+            return hours * 60 + minutes;
+        }
+
+        /**
+         * Converts total minutes from midnight to HH:MM string.
+         */
+        function minutesToTime(totalMinutes) {
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+        }
+
+        /**
+         * Gets all 30-minute slot start times between a start and end time (exclusive end time).
+         */
+        function getSlotsInTimeRange(start, end) {
+            const startMins = timeToMinutes(start);
+            const endMins = timeToMinutes(end);
+            const slots = [];
+
+            for (let currentMins = startMins; currentMins < endMins; currentMins += 30) {
+                slots.push(minutesToTime(currentMins));
+            }
+            return slots;
+        }
+
+
+        /**
+         * Shows a temporary message in the message box.
+         */
+        function showMessage(message, type) {
+            messageBox.textContent = message;
+            messageBox.className = 'mt-4 text-center p-3 rounded-lg block';
+
+            if (type === 'success') {
+                messageBox.classList.add('bg-green-100', 'text-green-800', 'border', 'border-green-300');
+                messageBox.classList.remove('bg-red-100', 'text-red-800', 'hidden');
+            } else if (type === 'error') {
+                messageBox.classList.add('bg-red-100', 'text-red-800', 'border', 'border-red-300');
+                messageBox.classList.remove('bg-green-100', 'text-green-800', 'hidden');
+            }
+
+            setTimeout(() => {
+                messageBox.classList.add('hidden');
+            }, 5000);
+        }
+
+        // --- AUTHENTICATION ---
+
+        async function authenticateUser() {
+            try {
+                if (initialAuthToken) {
+                    await setPersistence(auth, browserSessionPersistence);
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await setPersistence(auth, browserSessionPersistence);
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Firebase Auth failed:", error);
+                showMessage(`Authentication failed: ${error.message}`, 'error');
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUserId = user.uid;
+                isAuthReady = true;
+                userIdDisplay.textContent = `${currentUserId.substring(0, 4)}...${currentUserId.substring(currentUserId.length - 4)}`;
+                console.log("User authenticated:", currentUserId);
+
+                const storedName = localStorage.getItem(`userName_${currentUserId}`);
+                userNameInput.value = storedName || `User-${currentUserId.substring(0, 4)}`;
+
+                // IMPORTANT: Run cleanup before initializing the booking system
+                cleanupPastBookings().then(() => {
+                    initializeBookingSystem();
+                    startBookingListener();
+                });
+                
+            } else {
+                console.log("No user signed in. Attempting sign-in...");
+                authenticateUser();
+            }
+        });
+
+        // --- CLEANUP AND DATE RESTRICTION ---
+
+        /**
+         * Cleans up all bookings older than today from the database.
+         */
+        async function cleanupPastBookings() {
+            if (!isAuthReady) return;
+
+            const today = formatDate(new Date());
+            cleanupMessage.textContent = `Running cleanup for bookings before ${today}...`;
+
+            try {
+                // Query for all documents where the 'date' field is less than today's date string.
+                // NOTE: This comparison relies on lexicographical string comparison (YYYY-MM-DD format).
+                const bookingsRef = collection(db, COLLECTION_PATH);
+                const q = query(bookingsRef, where('date', '<', today));
+                
+                const snapshot = await getDocs(q);
+                const batch = writeBatch(db);
+                let deletedCount = 0;
+
+                snapshot.forEach((doc) => {
+                    batch.delete(doc.ref);
+                    deletedCount++;
+                });
+
+                if (deletedCount > 0) {
+                    await batch.commit();
+                    cleanupMessage.textContent = `✅ Cleanup complete: Deleted ${deletedCount} expired booking record(s).`;
+                } else {
+                    cleanupMessage.textContent = `✅ Cleanup complete: No expired bookings found before ${today}.`;
+                }
+
+            } catch (error) {
+                console.error("Failed to clean up old bookings:", error);
+                cleanupMessage.textContent = `❌ Cleanup failed: Could not delete old bookings. Error: ${error.message}`;
+            }
+        }
+
+
+        /**
+         * Sets up the initial UI state (date restrictions, time options, event listeners).
+         */
+        function initializeBookingSystem() {
+            const today = getDateOffset(0);
+            const twoDaysFuture = getDateOffset(2);
+            
+            const todayFormatted = formatDate(today);
+            const twoDaysFutureFormatted = formatDate(twoDaysFuture);
+
+            // 1. Enforce Date Restrictions (Today to Today + 2 Days)
+            dateSelector.min = todayFormatted;
+            dateSelector.max = twoDaysFutureFormatted;
+            
+            // 2. Set default selected date to today
+            selectedDate = todayFormatted;
+            dateSelector.value = selectedDate;
+            currentDateDisplay.textContent = selectedDate;
+
+            // 3. Populate time selectors with an invalid default option
+            const timeOptions = generateTimeOptions();
+            
+            const startOptions = `<option value="" disabled selected>Select Start Time</option>` + 
+                                 timeOptions.slice(0, -1).map(time => `<option value="${time}">${time}</option>`).join('');
+            
+            const endOptions = `<option value="" disabled selected>Select End Time</option>` + 
+                               timeOptions.slice(1).map(time => `<option value="${time}">${time}</option>`).join('');
+
+            startTimeSelector.innerHTML = startOptions;
+            endTimeSelector.innerHTML = endOptions;
+
+            // Set initial selected times to the placeholder (empty string value)
+            startTimeSelector.value = "";
+            endTimeSelector.value = "";
+            
+            // 4. Set default room
+            roomSelector.value = 'A';
+
+            // 5. Add event listeners
+            dateSelector.addEventListener('change', handleFormChange);
+            roomSelector.addEventListener('change', handleFormChange);
+            startTimeSelector.addEventListener('change', handleFormChange);
+            endTimeSelector.addEventListener('change', handleFormChange);
+            bookButton.addEventListener('click', handleBooking);
+            userNameInput.addEventListener('input', handleFormChange);
+            
+            // Initial status check
+            updateSelectionStatus();
+        }
+        
+        /**
+         * Handles change on any form element, updates state and UI status.
+         */
+        function handleFormChange(e) {
+            if (e && e.target === dateSelector) {
+                selectedDate = dateSelector.value;
+                currentDateDisplay.textContent = selectedDate;
+                // Restart listener to fetch bookings for the newly selected date
+                startBookingListener();
+            }
+            updateSelectionStatus();
+        }
+
+        /**
+         * Starts the real-time listener for bookings based on the selected date.
+         */
+        function startBookingListener() {
+            if (!isAuthReady || !currentUserId || !selectedDate) return;
+
+            const bookingsRef = collection(db, COLLECTION_PATH);
+            const q = query(bookingsRef, where('date', '==', selectedDate));
+
+            onSnapshot(q, (snapshot) => {
+                currentBookings = {};
+                const allBookings = [];
+                
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const key = `${data.startTime}_${data.room}`;
+                    currentBookings[key] = { id: doc.id, ...data };
+                    allBookings.push(currentBookings[key]);
+                });
+                
+                groupAllBookings(allBookings); 
+                renderAllBookings(); 
+                updateSelectionStatus(); 
+
+            }, (error) => {
+                console.error("Error listening to bookings:", error);
+                showMessage("Could not fetch real-time bookings. Check console for details.", 'error');
+            });
+        }
+        
+        /**
+         * Groups all 30-minute booking slots into contiguous, full bookings.
+         */
+        function groupAllBookings(bookings) {
+            const grouped = {};
+            
+            bookings.sort((a, b) => {
+                if (a.bookingGroupId !== b.bookingGroupId) {
+                    return a.bookingGroupId.localeCompare(b.bookingGroupId);
+                }
+                if (a.room !== b.room) {
+                    return a.room.localeCompare(b.room);
+                }
+                return timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
+            });
+            
+            bookings.forEach(booking => {
+                const groupId = booking.bookingGroupId;
+                if (!grouped[groupId]) {
+                    grouped[groupId] = {
+                        groupId: groupId,
+                        bookedAs: booking.bookedAs,
+                        rooms: {}, 
+                        startTime: booking.startTime,
+                        endTime: booking.startTime,
+                        docIds: [],
+                        bookerName: booking.bookerName,
+                        userId: booking.userId,
+                    };
+                }
+
+                const group = grouped[groupId];
+                const room = booking.room;
+
+                if (!group.rooms[room]) {
+                    group.rooms[room] = [];
+                    group.rooms[room].push(booking.startTime);
+                } else {
+                    group.rooms[room].push(booking.startTime);
+                }
+                
+                group.docIds.push(booking.id);
+
+                const currentSlotEndMins = timeToMinutes(booking.startTime) + 30;
+                const currentGroupEndMins = timeToMinutes(group.endTime);
+                
+                if (currentSlotEndMins > currentGroupEndMins) {
+                     group.endTime = minutesToTime(currentSlotEndMins);
+                }
+                
+                if (timeToMinutes(booking.startTime) < timeToMinutes(group.startTime)) {
+                    group.startTime = booking.startTime;
+                }
+            });
+
+            allBookingsGrouped = grouped;
+        }
+
+        /**
+         * Renders all active bookings in a public table.
+         */
+        function renderAllBookings() {
+            const bookingsArray = Object.values(allBookingsGrouped);
+            currentDateDisplay.textContent = selectedDate;
+
+            if (bookingsArray.length === 0) {
+                allBookingsContainer.innerHTML = `<p class="p-4 text-gray-500 text-center">There are no active bookings for ${selectedDate}.</p>`;
+                return;
+            }
+
+            let tableHTML = `
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Room(s)</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Booked By</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+            `;
+
+            bookingsArray.forEach(booking => {
+                const roomNames = Object.keys(booking.rooms).sort().join(' & ');
+                const isCurrentUserBooking = booking.userId === currentUserId;
+                const bookerDisplay = `${booking.bookerName}${isCurrentUserBooking ? ' (You)' : ''}`;
+                
+                tableHTML += `
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${booking.startTime} - ${booking.endTime}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${booking.bookedAs} (${roomNames})</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${bookerDisplay}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            ${isCurrentUserBooking ? `
+                                <button data-group-id="${booking.groupId}" data-room="${booking.bookedAs}" data-time="${booking.startTime}" data-date="${selectedDate}"
+                                    class="cancel-list-btn text-red-600 hover:text-red-900 font-semibold transition duration-150">
+                                    Cancel Booking
+                                </button>
+                            ` : `
+                                <span class="text-gray-400">Other User's Booking</span>
+                            `}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tableHTML += `</tbody></table>`;
+            allBookingsContainer.innerHTML = tableHTML;
+
+            document.querySelectorAll('.cancel-list-btn').forEach(button => {
+                button.addEventListener('click', handleDeleteBookingFromList);
+            });
+        }
+
+
+        /**
+         * Checks the availability of the currently selected room(s) and time range.
+         */
+        function checkAvailabilityForSelection(startTime, endTime, room) {
+            const slotsToCheck = getSlotsInTimeRange(startTime, endTime);
+            
+            if (slotsToCheck.length === 0) return false;
+
+            const roomsToCheck = room === 'A+B' ? ['A', 'B'] : [room];
+
+            for (const time of slotsToCheck) {
+                for (const r of roomsToCheck) {
+                    const key = `${time}_${r}`;
+                    if (currentBookings[key]) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        /**
+         * Resets the booking form fields after a successful submission.
+         */
+        function resetForm() {
+            // Reset Date (to today)
+            const todayFormatted = formatDate(getDateOffset(0));
+            dateSelector.value = todayFormatted;
+            selectedDate = todayFormatted;
+            currentDateDisplay.textContent = selectedDate;
+
+            // Reset Room
+            roomSelector.value = 'A'; 
+
+            // Reset Time Selectors to invalid state (empty string)
+            startTimeSelector.value = "";
+            endTimeSelector.value = "";
+            
+            // Re-run status update and listener for the reset date
+            updateSelectionStatus();
+            startBookingListener(); 
+        }
+
+        /**
+         * Updates the status message and button based on the current form inputs.
+         */
+        function updateSelectionStatus() {
+            const currentStartTime = startTimeSelector.value;
+            const currentEndTime = endTimeSelector.value;
+            const currentRoom = roomSelector.value;
+            const name = userNameInput.value.trim();
+            
+            const startMins = timeToMinutes(currentStartTime || '00:00'); // Use 00:00 for comparison if empty
+            const endMins = timeToMinutes(currentEndTime || '00:00');
+            
+            // 1. Basic validation checks
+            if (!name) {
+                selectionStatus.className = 'text-center font-bold p-3 rounded-lg bg-orange-100 text-orange-800 border border-orange-300';
+                selectionStatus.innerHTML = '⚠️ Please enter your name to proceed.';
+                bookButton.disabled = true;
+                return;
+            }
+
+            if (!currentStartTime || !currentEndTime) {
+                selectionStatus.className = 'text-center font-bold p-3 rounded-lg bg-orange-100 text-orange-800 border border-orange-300';
+                selectionStatus.innerHTML = '⚠️ Please select both a valid start time and end time.';
+                bookButton.disabled = true;
+                return;
+            }
+            
+            if (startMins >= endMins) {
+                selectionStatus.className = 'text-center font-bold p-3 rounded-lg bg-red-100 text-red-800 border border-red-300';
+                selectionStatus.innerHTML = '⚠️ End time must be after start time.';
+                bookButton.disabled = true;
+                return;
+            }
+            
+            if (getSlotsInTimeRange(currentStartTime, currentEndTime).length === 0) {
+                 selectionStatus.className = 'text-center font-bold p-3 rounded-lg bg-red-100 text-red-800 border border-red-300';
+                 selectionStatus.innerHTML = '⚠️ Invalid time range selected (must be at least 30 minutes).';
+                 bookButton.disabled = true;
+                 return;
+            }
+            
+            // 2. Availability check
+            if (checkAvailabilityForSelection(currentStartTime, currentEndTime, currentRoom)) {
+                selectionStatus.className = 'text-center font-bold p-3 rounded-lg bg-green-100 text-green-800 border border-green-300';
+                selectionStatus.innerHTML = `✅ Room(s) ${currentRoom} are AVAILABLE for booking!`;
+                bookButton.disabled = false;
+                bookButton.textContent = 'Confirm Booking';
+            } else {
+                selectionStatus.className = 'text-center font-bold p-3 rounded-lg bg-red-100 text-red-800 border border-red-300';
+                selectionStatus.innerHTML = `❌ Room(s) ${currentRoom} are UNAVAILABLE in the selected range. Please adjust times or room.`;
+                bookButton.disabled = true;
+                bookButton.textContent = 'Check Availability & Book';
+            }
+            
+            if (currentUserId) {
+                localStorage.setItem(`userName_${currentUserId}`, name);
+            }
+        }
+
+        /**
+         * Handles the booking submission.
+         */
+        async function handleBooking() {
+            const bookerName = userNameInput.value.trim();
+            const currentStartTime = startTimeSelector.value;
+            const currentEndTime = endTimeSelector.value;
+            const currentRoom = roomSelector.value;
+            
+            if (!currentUserId || !currentStartTime || !currentEndTime || !selectedDate || !currentRoom || !bookerName) {
+                // This check should ideally be caught by updateSelectionStatus, but good for safety.
+                return showMessage("Please ensure all fields are filled out correctly and valid times are selected.", 'error');
+            }
+
+            const roomsToBook = currentRoom === 'A+B' ? ['A', 'B'] : [currentRoom];
+            const slotsToBook = getSlotsInTimeRange(currentStartTime, currentEndTime);
+
+            if (slotsToBook.length === 0) {
+                 return showMessage("Invalid time range. End time must be after start time.", 'error');
+            }
+
+            if (!checkAvailabilityForSelection(currentStartTime, currentEndTime, currentRoom)) {
+                showMessage(`Booking failed: Room(s) ${roomsToBook.join(', ')} are already booked in this range.`, 'error');
+                updateSelectionStatus();
+                return;
+            }
+
+            bookButton.disabled = true;
+            bookButton.textContent = 'Processing Booking...';
+
+            try {
+                const batch = writeBatch(db);
+                const bookingGroupId = crypto.randomUUID(); 
+
+                for (const time of slotsToBook) {
+                    for (const room of roomsToBook) {
+                        const docRef = doc(collection(db, COLLECTION_PATH));
+                        batch.set(docRef, {
+                            date: selectedDate,
+                            startTime: time,
+                            room: room, 
+                            bookedAs: currentRoom, 
+                            bookingGroupId: bookingGroupId,
+                            userId: currentUserId,
+                            bookerName: bookerName,
+                            timestamp: new Date().toISOString(),
+                            duration: 30 
+                        });
+                    }
+                }
+
+                await batch.commit();
+
+                showMessage(`Successfully booked Room(s) ${currentRoom} from ${currentStartTime} to ${currentEndTime} on ${selectedDate}!`, 'success');
+                
+                // Reset form fields after successful booking
+                resetForm();
+
+            } catch (error) {
+                console.error("Booking error:", error);
+                showMessage(`Booking failed due to a system error: ${error.message}`, 'error');
+            } finally {
+                bookButton.textContent = 'Check Availability & Book';
+                updateSelectionStatus();
+            }
+        }
+
+        /**
+         * Handler for the delete button in the All Bookings list.
+         */
+        function handleDeleteBookingFromList(e) {
+            e.stopPropagation();
+
+            const groupId = e.currentTarget.getAttribute('data-group-id');
+            const bookedRoom = e.currentTarget.getAttribute('data-room');
+            const time = e.currentTarget.getAttribute('data-time');
+            const date = e.currentTarget.getAttribute('data-date');
+            
+            showConfirmModal(
+                `Are you sure you want to cancel your booking for Room(s) ${bookedRoom} starting at ${time} on ${date}?`,
+                () => handleDeleteBooking(groupId, bookedRoom, time, date)
+            );
+        }
+
+        /**
+         * Handles the actual deletion of the booking group.
+         */
+        async function handleDeleteBooking(groupId, bookedRoom, time, date) {
+             try {
+                const batch = writeBatch(db);
+                let docsToDelete = [];
+
+                for (const key in currentBookings) {
+                    const booking = currentBookings[key];
+                    if (booking.bookingGroupId === groupId && booking.userId === currentUserId) {
+                        docsToDelete.push(booking.id);
+                    }
+                }
+
+                if (docsToDelete.length === 0) {
+                    return showMessage("Cancellation failed: Could not find related documents for this booking group or you do not have permission to delete it.", 'error');
+                }
+
+                docsToDelete.forEach(docId => {
+                    batch.delete(doc(db, COLLECTION_PATH, docId));
+                });
+
+                await batch.commit();
+
+                showMessage(`Entire booking group for Room(s) ${bookedRoom} cancelled successfully.`, 'success');
+            } catch (error) {
+                console.error("Deletion error:", error);
+                showMessage(`Cancellation failed: ${error.message}`, 'error');
+            }
+        }
+
+        /**
+         * Custom modal replacement for alert()/confirm().
+         */
+        function showConfirmModal(message, onConfirm) {
+            modalMessage.textContent = message;
+            confirmationModal.classList.remove('hidden');
+
+            const handleConfirm = () => {
+                onConfirm();
+                confirmationModal.classList.add('hidden');
+                cleanupListeners();
+            };
+
+            const handleCancel = () => {
+                confirmationModal.classList.add('hidden');
+                cleanupListeners();
+            };
+            
+            const cleanupListeners = () => {
+                modalConfirmBtn.removeEventListener('click', handleConfirm);
+                modalCancelBtn.removeEventListener('click', handleCancel);
+            }
+
+            modalConfirmBtn.addEventListener('click', handleConfirm);
+            modalCancelBtn.addEventListener('click', handleCancel);
+        }
+
+    </script>
+</body>
+</html>
