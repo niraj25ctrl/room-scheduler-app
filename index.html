@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Restricted Public Meeting Room Scheduler</title>
+    <title>Simple Persistent Meeting Room Scheduler</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -37,19 +37,8 @@
     <div id="app" class="max-w-4xl mx-auto bg-white shadow-2xl rounded-xl p-4 sm:p-8">
 
         <h1 class="text-3xl font-bold text-gray-900 mb-6 border-b pb-2 text-center">
-            Shared Meeting Room Scheduler
+            Simple Meeting Room Scheduler
         </h1>
-
-        <!-- Auth Info and User ID -->
-        <div id="auth-info" class="text-sm text-gray-600 mb-6 p-3 bg-blue-50 rounded-lg border border-blue-200 flex justify-between items-center">
-            <span class="font-bold text-blue-700">Current User:</span>
-            <span id="user-id-display" class="font-medium text-gray-800">Connecting...</span>
-        </div>
-
-        <!-- System Status/Cleanup Message -->
-        <div id="system-status" class="text-sm text-center p-2 rounded-lg bg-yellow-100 text-yellow-800 border border-yellow-300 mb-6">
-            <span id="cleanup-message">Initializing...</span>
-        </div>
 
         <!-- Booking Form Inputs -->
         <div class="flex flex-col gap-6 mb-8 p-6 bg-emerald-50 rounded-xl border border-emerald-200 shadow-inner">
@@ -147,7 +136,6 @@
     <!-- Firebase SDK Imports and Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, query, where, getDocs, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -155,29 +143,36 @@
         const crypto = window.crypto || window.msCrypto;
         if (typeof crypto.randomUUID === 'undefined') {
             crypto.randomUUID = () => {
-                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-                    return v.toString(16);
-                });
+                // Simplified UUID generation for compatibility
+                return 'anon-' + Math.random().toString(36).substring(2, 9) + Math.random().toString(36).substring(2, 9);
             };
         }
 
-        // Global Firebase Configuration and App ID (Provided by Canvas)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-room-booking-app';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { /* Mock config for local testing */ };
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // --- ENVIRONMENT VARIABLES AND INIT ---
 
+        // Global Firebase Configuration and App ID (Provided by Canvas environment)
+        // These are required for Firestore to connect, even without complex auth.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-room-booking-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { /* Mock config */ };
+        
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-        const auth = getAuth(app);
-        // Enable debug logging for Firestore
         setLogLevel('debug');
 
-        // CONSTANTS
+        // CONSTANTS & SESSION USER ID
+        // Use a simple public collection path
         const COLLECTION_PATH = `/artifacts/${appId}/public/data/bookings`;
         
-        // DOM Elements
+        // Use sessionStorage to keep the "user" identity consistent across browser tabs and reloads 
+        // until the session ends. This is a simple replacement for Firebase Auth UID.
+        let currentUserId = sessionStorage.getItem('anonUserId');
+        if (!currentUserId) {
+            currentUserId = crypto.randomUUID();
+            sessionStorage.setItem('anonUserId', currentUserId);
+        }
+
+        // --- DOM Elements ---
         const dateSelector = document.getElementById('date-selector');
         const roomSelector = document.getElementById('room-selector');
         const startTimeSelector = document.getElementById('start-time-selector');
@@ -185,11 +180,9 @@
         const bookButton = document.getElementById('book-button');
         const selectionStatus = document.getElementById('selection-status');
         const messageBox = document.getElementById('message-box');
-        const userIdDisplay = document.getElementById('user-id-display');
         const userNameInput = document.getElementById('user-name-input');
         const allBookingsContainer = document.getElementById('all-bookings-container');
         const currentDateDisplay = document.getElementById('current-date-display');
-        const cleanupMessage = document.getElementById('cleanup-message');
         
         // Modal Elements
         const confirmationModal = document.getElementById('confirmation-modal');
@@ -198,27 +191,19 @@
         const modalCancelBtn = document.getElementById('modal-cancel-btn');
 
 
-        // STATE
-        let currentUserId = null;
+        // --- STATE ---
         let selectedDate = null;
         let currentBookings = {}; 
-        let isAuthReady = false;
         let allBookingsGrouped = {}; 
 
         // --- DATE UTILITIES ---
 
-        /**
-         * Returns a date object shifted by a number of days.
-         */
         function getDateOffset(days) {
             const date = new Date();
             date.setDate(date.getDate() + days);
             return date;
         }
 
-        /**
-         * Formats a Date object to YYYY-MM-DD string.
-         */
         function formatDate(date) {
             const y = date.getFullYear();
             const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -226,9 +211,6 @@
             return `${y}-${m}-${d}`;
         }
 
-        /**
-         * Generates all 30-minute time options for dropdowns (8:00 AM to 10:00 PM END time).
-         */
         function generateTimeOptions() {
             const options = [];
             const startTime = 8 * 60; // 8:00 AM
@@ -243,26 +225,17 @@
             return options;
         }
         
-        /**
-         * Converts HH:MM string to total minutes from midnight.
-         */
         function timeToMinutes(timeString) {
             const [hours, minutes] = timeString.split(':').map(Number);
             return hours * 60 + minutes;
         }
 
-        /**
-         * Converts total minutes from midnight to HH:MM string.
-         */
         function minutesToTime(totalMinutes) {
             const hours = Math.floor(totalMinutes / 60);
             const minutes = totalMinutes % 60;
             return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
         }
 
-        /**
-         * Gets all 30-minute slot start times between a start and end time (exclusive end time).
-         */
         function getSlotsInTimeRange(start, end) {
             const startMins = timeToMinutes(start);
             const endMins = timeToMinutes(end);
@@ -274,10 +247,6 @@
             return slots;
         }
 
-
-        /**
-         * Shows a temporary message in the message box.
-         */
         function showMessage(message, type) {
             messageBox.textContent = message;
             messageBox.className = 'mt-4 text-center p-3 rounded-lg block';
@@ -295,84 +264,7 @@
             }, 5000);
         }
 
-        // --- AUTHENTICATION ---
-
-        async function authenticateUser() {
-            try {
-                if (initialAuthToken) {
-                    await setPersistence(auth, browserSessionPersistence);
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await setPersistence(auth, browserSessionPersistence);
-                    await signInAnonymously(auth);
-                }
-            } catch (error) {
-                console.error("Firebase Auth failed:", error);
-                showMessage(`Authentication failed: ${error.message}`, 'error');
-            }
-        }
-
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                currentUserId = user.uid;
-                isAuthReady = true;
-                userIdDisplay.textContent = `${currentUserId.substring(0, 4)}...${currentUserId.substring(currentUserId.length - 4)}`;
-                console.log("User authenticated:", currentUserId);
-
-                const storedName = localStorage.getItem(`userName_${currentUserId}`);
-                userNameInput.value = storedName || `User-${currentUserId.substring(0, 4)}`;
-
-                // IMPORTANT: Run cleanup before initializing the booking system
-                cleanupPastBookings().then(() => {
-                    initializeBookingSystem();
-                    startBookingListener();
-                });
-                
-            } else {
-                console.log("No user signed in. Attempting sign-in...");
-                authenticateUser();
-            }
-        });
-
-        // --- CLEANUP AND DATE RESTRICTION ---
-
-        /**
-         * Cleans up all bookings older than today from the database.
-         */
-        async function cleanupPastBookings() {
-            if (!isAuthReady) return;
-
-            const today = formatDate(new Date());
-            cleanupMessage.textContent = `Running cleanup for bookings before ${today}...`;
-
-            try {
-                // Query for all documents where the 'date' field is less than today's date string.
-                // NOTE: This comparison relies on lexicographical string comparison (YYYY-MM-DD format).
-                const bookingsRef = collection(db, COLLECTION_PATH);
-                const q = query(bookingsRef, where('date', '<', today));
-                
-                const snapshot = await getDocs(q);
-                const batch = writeBatch(db);
-                let deletedCount = 0;
-
-                snapshot.forEach((doc) => {
-                    batch.delete(doc.ref);
-                    deletedCount++;
-                });
-
-                if (deletedCount > 0) {
-                    await batch.commit();
-                    cleanupMessage.textContent = `✅ Cleanup complete: Deleted ${deletedCount} expired booking record(s).`;
-                } else {
-                    cleanupMessage.textContent = `✅ Cleanup complete: No expired bookings found before ${today}.`;
-                }
-
-            } catch (error) {
-                console.error("Failed to clean up old bookings:", error);
-                cleanupMessage.textContent = `❌ Cleanup failed: Could not delete old bookings. Error: ${error.message}`;
-            }
-        }
-
+        // --- INITIALIZATION ---
 
         /**
          * Sets up the initial UI state (date restrictions, time options, event listeners).
@@ -384,7 +276,7 @@
             const todayFormatted = formatDate(today);
             const twoDaysFutureFormatted = formatDate(twoDaysFuture);
 
-            // 1. Enforce Date Restrictions (Today to Today + 2 Days)
+            // 1. Enforce Date Restrictions
             dateSelector.min = todayFormatted;
             dateSelector.max = twoDaysFutureFormatted;
             
@@ -392,6 +284,9 @@
             selectedDate = todayFormatted;
             dateSelector.value = selectedDate;
             currentDateDisplay.textContent = selectedDate;
+            
+            // Load user name from local storage
+            userNameInput.value = localStorage.getItem('userName') || '';
 
             // 3. Populate time selectors with an invalid default option
             const timeOptions = generateTimeOptions();
@@ -420,10 +315,13 @@
             bookButton.addEventListener('click', handleBooking);
             userNameInput.addEventListener('input', handleFormChange);
             
-            // Initial status check
+            // Start listener and initial status check
+            startBookingListener();
             updateSelectionStatus();
         }
         
+        window.onload = initializeBookingSystem;
+
         /**
          * Handles change on any form element, updates state and UI status.
          */
@@ -441,9 +339,10 @@
          * Starts the real-time listener for bookings based on the selected date.
          */
         function startBookingListener() {
-            if (!isAuthReady || !currentUserId || !selectedDate) return;
+            if (!selectedDate) return;
 
             const bookingsRef = collection(db, COLLECTION_PATH);
+            // Query bookings only for the selected date
             const q = query(bookingsRef, where('date', '==', selectedDate));
 
             onSnapshot(q, (snapshot) => {
@@ -473,6 +372,7 @@
         function groupAllBookings(bookings) {
             const grouped = {};
             
+            // Sort to process contiguous bookings correctly
             bookings.sort((a, b) => {
                 if (a.bookingGroupId !== b.bookingGroupId) {
                     return a.bookingGroupId.localeCompare(b.bookingGroupId);
@@ -494,7 +394,7 @@
                         endTime: booking.startTime,
                         docIds: [],
                         bookerName: booking.bookerName,
-                        userId: booking.userId,
+                        userId: booking.userId, // The anonymous ID
                     };
                 }
 
@@ -513,10 +413,12 @@
                 const currentSlotEndMins = timeToMinutes(booking.startTime) + 30;
                 const currentGroupEndMins = timeToMinutes(group.endTime);
                 
+                // Update the end time if the current slot extends the group's duration
                 if (currentSlotEndMins > currentGroupEndMins) {
                      group.endTime = minutesToTime(currentSlotEndMins);
                 }
                 
+                // Update the start time if the current slot is earlier
                 if (timeToMinutes(booking.startTime) < timeToMinutes(group.startTime)) {
                     group.startTime = booking.startTime;
                 }
@@ -552,6 +454,7 @@
 
             bookingsArray.forEach(booking => {
                 const roomNames = Object.keys(booking.rooms).sort().join(' & ');
+                // Check if the booking userId matches the current session's anonymous ID
                 const isCurrentUserBooking = booking.userId === currentUserId;
                 const bookerDisplay = `${booking.bookerName}${isCurrentUserBooking ? ' (You)' : ''}`;
                 
@@ -680,9 +583,8 @@
                 bookButton.textContent = 'Check Availability & Book';
             }
             
-            if (currentUserId) {
-                localStorage.setItem(`userName_${currentUserId}`, name);
-            }
+            // Save name to local storage for persistence across sessions
+            localStorage.setItem('userName', name);
         }
 
         /**
@@ -694,8 +596,7 @@
             const currentEndTime = endTimeSelector.value;
             const currentRoom = roomSelector.value;
             
-            if (!currentUserId || !currentStartTime || !currentEndTime || !selectedDate || !currentRoom || !bookerName) {
-                // This check should ideally be caught by updateSelectionStatus, but good for safety.
+            if (!currentStartTime || !currentEndTime || !selectedDate || !currentRoom || !bookerName) {
                 return showMessage("Please ensure all fields are filled out correctly and valid times are selected.", 'error');
             }
 
@@ -728,7 +629,7 @@
                             room: room, 
                             bookedAs: currentRoom, 
                             bookingGroupId: bookingGroupId,
-                            userId: currentUserId,
+                            userId: currentUserId, // The anonymous session ID
                             bookerName: bookerName,
                             timestamp: new Date().toISOString(),
                             duration: 30 
@@ -779,13 +680,14 @@
 
                 for (const key in currentBookings) {
                     const booking = currentBookings[key];
+                    // Only allow deletion if the stored userId matches the current session ID
                     if (booking.bookingGroupId === groupId && booking.userId === currentUserId) {
                         docsToDelete.push(booking.id);
                     }
                 }
 
                 if (docsToDelete.length === 0) {
-                    return showMessage("Cancellation failed: Could not find related documents for this booking group or you do not have permission to delete it.", 'error');
+                    return showMessage("Cancellation failed: Could not find related documents for this booking group or you do not have permission (wrong session) to delete it.", 'error');
                 }
 
                 docsToDelete.forEach(docId => {
