@@ -88,7 +88,7 @@
 
             <!-- Validation/Status -->
             <div id="selection-status" class="text-gray-700 font-medium p-3 rounded-lg text-center bg-white border">
-                <p>Enter your details and click 'Check Availability & Book'.</p>
+                <p>Initializing...</p>
             </div>
             
             <!-- Booking Button -->
@@ -151,21 +151,26 @@
         // --- ENVIRONMENT VARIABLES AND INIT ---
 
         // Global Firebase Configuration and App ID (Provided by Canvas environment)
-        // These are required for Firestore to connect, even without complex auth.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-room-booking-app';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { /* Mock config */ };
         
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        setLogLevel('debug');
+        // Initialize Firebase (This must run before Firestore access)
+        let app, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            setLogLevel('debug');
+        } catch (e) {
+            console.error("Firebase initialization failed:", e);
+            document.getElementById('selection-status').innerHTML = '❌ Firebase failed to initialize. Check configuration.';
+        }
+
 
         // CONSTANTS & SESSION USER ID
         // Use a simple public collection path
         const COLLECTION_PATH = `/artifacts/${appId}/public/data/bookings`;
         
         // Use sessionStorage to keep the "user" identity consistent across browser tabs and reloads 
-        // until the session ends. This is a simple replacement for Firebase Auth UID.
         let currentUserId = sessionStorage.getItem('anonUserId');
         if (!currentUserId) {
             currentUserId = crypto.randomUUID();
@@ -211,6 +216,9 @@
             return `${y}-${m}-${d}`;
         }
 
+        /**
+         * Generates the list of 30-minute time options from 08:00 to 22:00.
+         */
         function generateTimeOptions() {
             const options = [];
             const startTime = 8 * 60; // 8:00 AM
@@ -294,6 +302,7 @@
             const startOptions = `<option value="" disabled selected>Select Start Time</option>` + 
                                  timeOptions.slice(0, -1).map(time => `<option value="${time}">${time}</option>`).join('');
             
+            // End options start 30 minutes after the first start option
             const endOptions = `<option value="" disabled selected>Select End Time</option>` + 
                                timeOptions.slice(1).map(time => `<option value="${time}">${time}</option>`).join('');
 
@@ -316,7 +325,11 @@
             userNameInput.addEventListener('input', handleFormChange);
             
             // Start listener and initial status check
-            startBookingListener();
+            if (db) {
+                startBookingListener();
+            } else {
+                selectionStatus.innerHTML = '❌ System failed to connect to the database.';
+            }
             updateSelectionStatus();
         }
         
@@ -330,7 +343,7 @@
                 selectedDate = dateSelector.value;
                 currentDateDisplay.textContent = selectedDate;
                 // Restart listener to fetch bookings for the newly selected date
-                startBookingListener();
+                if (db) startBookingListener();
             }
             updateSelectionStatus();
         }
@@ -339,7 +352,7 @@
          * Starts the real-time listener for bookings based on the selected date.
          */
         function startBookingListener() {
-            if (!selectedDate) return;
+            if (!selectedDate || !db) return;
 
             const bookingsRef = collection(db, COLLECTION_PATH);
             // Query bookings only for the selected date
@@ -526,7 +539,7 @@
             
             // Re-run status update and listener for the reset date
             updateSelectionStatus();
-            startBookingListener(); 
+            if (db) startBookingListener(); 
         }
 
         /**
@@ -591,6 +604,8 @@
          * Handles the booking submission.
          */
         async function handleBooking() {
+            if (!db) return showMessage("Database connection failed. Cannot book.", 'error');
+
             const bookerName = userNameInput.value.trim();
             const currentStartTime = startTimeSelector.value;
             const currentEndTime = endTimeSelector.value;
@@ -674,10 +689,12 @@
          * Handles the actual deletion of the booking group.
          */
         async function handleDeleteBooking(groupId, bookedRoom, time, date) {
+            if (!db) return showMessage("Database connection failed. Cannot delete.", 'error');
              try {
                 const batch = writeBatch(db);
                 let docsToDelete = [];
 
+                // Filter the documents to delete based on the booking group ID and the current session user ID
                 for (const key in currentBookings) {
                     const booking = currentBookings[key];
                     // Only allow deletion if the stored userId matches the current session ID
