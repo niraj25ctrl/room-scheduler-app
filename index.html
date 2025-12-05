@@ -1,621 +1,134 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Simple Persistent Meeting Room Scheduler</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Open Booking System</title>
   <style>
-    body { font-family: 'Inter',sans-serif; background:#f7f9fb; }
-    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:50; }
-    #date-selector { appearance: none; -webkit-appearance: none; cursor: pointer; }
+    body { font-family: Arial, sans-serif; padding: 20px; max-width:900px; margin:0 auto; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align:center; }
+    th { background:#f4f4f4; }
+    .controls { display:flex; gap:10px; flex-wrap:wrap; margin:12px 0; align-items:center; }
+    .controls > * { padding:6px 8px; }
+    button { padding:8px 12px; cursor:pointer; }
+    .success { color: green; }
+    .error { color: red; }
   </style>
 </head>
-<body class="p-4 sm:p-8">
+<body>
+  <h2>Open Booking System</h2>
 
-  <div id="app" class="max-w-4xl mx-auto bg-white shadow-2xl rounded-xl p-4 sm:p-8">
-    <h1 class="text-3xl font-bold text-gray-900 mb-6 border-b pb-2 text-center">Simple Meeting Room Scheduler</h1>
+  <div class="controls">
+    <label>Date: <input type="date" id="date"></label>
 
-    <div class="flex flex-col gap-6 mb-8 p-6 bg-emerald-50 rounded-xl border border-emerald-200 shadow-inner">
-      <h2 class="text-xl font-bold text-emerald-800 border-b pb-2">New Booking Details</h2>
+    <label>Room:
+      <select id="room">
+        <option>A</option>
+        <option>B</option>
+        <option>C</option>
+        <option>D</option>
+        <option>A & B</option>
+      </select>
+    </label>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="flex flex-col space-y-1">
-          <label for="user-name-input" class="font-bold text-gray-700">Your Name (Required)*</label>
-          <input type="text" id="user-name-input" placeholder="Enter your name" required class="p-3 border rounded-lg text-base focus:ring-blue-500 focus:border-blue-500 shadow-sm">
-        </div>
+    <label>Slot:
+      <select id="slot">
+        <option>08:00-08:30</option>
+        <option>08:30-09:00</option>
+        <option>09:00-09:30</option>
+        <option>09:30-10:00</option>
+        <option>10:00-10:30</option>
+        <option>10:30-11:00</option>
+        <!-- add more as needed -->
+      </select>
+    </label>
 
-        <div class="flex flex-col space-y-1">
-          <label for="date-selector" class="font-bold text-gray-700">Date (Today + 2 Days Max)</label>
-          <input type="date" id="date-selector" class="p-3 border border-gray-300 rounded-lg w-full bg-white focus:ring-emerald-500 focus:border-emerald-500 shadow-sm">
-        </div>
-      </div>
+    <label>Name: <input id="name" type="text" placeholder="Your name"></label>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="flex flex-col space-y-1">
-          <label for="room-selector" class="font-bold text-gray-700">Room(s)</label>
-          <select id="room-selector" class="p-3 border border-gray-300 rounded-lg w-full bg-white focus:ring-emerald-500 focus:border-emerald-500 shadow-sm">
-            <option value="A">Room A</option>
-            <option value="B">Room B</option>
-            <option value="C">Room C</option>
-            <option value="D">Room D</option>
-            <option value="A+B">Rooms A & B (Combined)</option>
-          </select>
-        </div>
-
-        <div class="flex flex-col space-y-1">
-          <label for="start-time-selector" class="font-bold text-gray-700">Start Time</label>
-          <select id="start-time-selector" class="p-3 border border-gray-300 rounded-lg w-full bg-white focus:ring-emerald-500 focus:border-emerald-500 shadow-sm"></select>
-        </div>
-
-        <div class="flex flex-col space-y-1">
-          <label for="end-time-selector" class="font-bold text-gray-700">End Time</label>
-          <select id="end-time-selector" class="p-3 border border-gray-300 rounded-lg w-full bg-white focus:ring-emerald-500 focus:border-emerald-500 shadow-sm"></select>
-        </div>
-      </div>
-
-      <div id="selection-status" class="text-gray-700 font-medium p-3 rounded-lg text-center bg-white border">
-        <p>Initializing...</p>
-      </div>
-
-      <button id="book-button" class="px-8 py-3 bg-emerald-600 text-white font-bold rounded-full text-lg shadow-lg hover:bg-emerald-700 disabled:opacity-50 transition duration-150 ease-in-out w-full" disabled>
-        Check Availability & Book
-      </button>
-
-      <div id="message-box" class="mt-2 text-center p-3 rounded-lg hidden" role="alert"></div>
-    </div>
-
-    <div class="mt-10">
-      <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">All Active Bookings for <span id="current-date-display">...</span></h2>
-      <div id="all-bookings-container" class="bg-white shadow-lg rounded-xl overflow-x-auto border">
-        <p id="no-bookings-message" class="p-4 text-gray-500 text-center">Loading bookings...</p>
-      </div>
-    </div>
+    <button id="bookBtn">Book Slot</button>
   </div>
 
-  <div id="confirmation-modal" class="modal-overlay hidden" aria-modal="true" role="dialog">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 transform transition-all duration-300 scale-100">
-      <div class="flex items-center space-x-3 mb-4">
-        <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.332 16c-.77 1.333.192 3 1.732 3z"/></svg>
-        <h3 id="modal-title" class="text-xl font-bold text-gray-900">Confirm Cancellation</h3>
-      </div>
-      <p id="modal-message" class="text-gray-600 mb-6"></p>
-      <div class="flex justify-end space-x-3">
-        <button id="modal-cancel-btn" class="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Keep Booking</button>
-        <button id="modal-confirm-btn" class="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition">Yes, Cancel It</button>
-      </div>
-    </div>
-  </div>
+  <div id="status" role="status"></div>
 
-  <!-- Firebase + App logic -->
-  <script type="module">
-  // --------- Firebase imports (modular v11) ----------
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-  import {
-    getFirestore,
-    collection,
-    doc,
-    writeBatch,
-    query,
-    where,
-    onSnapshot,
-    deleteDoc,
-    setLogLevel
-  } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+  <h3>Booked Slots</h3>
+  <div id="tableDiv">Loading bookings…</div>
 
-  // Polyfill for randomUUID (very small fallback)
-  const cryptoLib = window.crypto || window.msCrypto || {};
-  if (!cryptoLib.randomUUID) {
-    cryptoLib.randomUUID = () => 'anon-' + Math.random().toString(36).slice(2, 9) + Math.random().toString(36).slice(2, 9);
-  }
+<script>
+const api = "https://script.google.com/macros/s/AKfycbxzidQsMYaLgUudUz9jX-TpQDZJDrfizhK04N7YjDkgM7r5AsImsZQTTD8aLFlufkw-SA/exec"; // <<-- paste Apps Script URL here
 
-  // --- Provide your Firebase config here or via environment replacement on deploy ---
-  const appId = (typeof __app_id !== 'undefined') ? __app_id : 'default-room-booking-app';
-  const firebaseConfig = (typeof __firebase_config !== 'undefined') ? JSON.parse(__firebase_config) : {
-    // <-- Replace these with your real values for production
-    apiKey: "REPLACE_ME",
-    authDomain: "REPLACE_ME",
-    projectId: "REPLACE_ME",
-  };
-
-  let app, db;
+async function loadBookings() {
   try {
-    app = initializeApp(firebaseConfig);
-    db = getFirestore(app);
-    // optional debug level
-    setLogLevel('error');
+    const res = await fetch(api);
+    const bookings = await res.json();
+    renderTable(bookings || []);
   } catch (err) {
-    console.error('Firebase init failed', err);
-    document.getElementById('selection-status').textContent = '❌ Firebase initialization failed. Check console.';
+    document.getElementById('tableDiv').textContent = 'Failed to load bookings. See console.';
+    console.error(err);
+  }
+}
+
+function renderTable(bookings) {
+  if (!bookings.length) {
+    document.getElementById("tableDiv").innerHTML = "<p>No bookings yet.</p>";
+    return;
+  }
+  let html = `<table><thead><tr><th>Date</th><th>Room</th><th>Slot</th><th>Name</th></tr></thead><tbody>`;
+  bookings.forEach(b => {
+    html += `<tr><td>${escapeHtml(b.Date||b.date||'')}</td><td>${escapeHtml(b.Room||b.room||'')}</td><td>${escapeHtml(b.Slot||b.slot||'')}</td><td>${escapeHtml(b.Name||b.name||'')}</td></tr>`;
+  });
+  html += `</tbody></table>`;
+  document.getElementById("tableDiv").innerHTML = html;
+}
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return s.toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]));
+}
+
+document.getElementById('bookBtn').addEventListener('click', async () => {
+  const date = document.getElementById('date').value;
+  const room = document.getElementById('room').value;
+  const slot = document.getElementById('slot').value;
+  const name = document.getElementById('name').value.trim();
+
+  const status = document.getElementById('status');
+  status.textContent = '';
+  if (!date || !name) {
+    status.textContent = 'Please fill Date and Name.';
+    status.className = 'error';
+    return;
   }
 
-  // --------- DOM elements ---------
-  const dateSelector = document.getElementById('date-selector');
-  const roomSelector = document.getElementById('room-selector');
-  const startTimeSelector = document.getElementById('start-time-selector');
-  const endTimeSelector = document.getElementById('end-time-selector');
-  const userNameInput = document.getElementById('user-name-input');
-  const bookButton = document.getElementById('book-button');
-  const selectionStatus = document.getElementById('selection-status');
-  const messageBox = document.getElementById('message-box');
-  const allBookingsContainer = document.getElementById('all-bookings-container');
-  const currentDateDisplay = document.getElementById('current-date-display');
-
-  const confirmationModal = document.getElementById('confirmation-modal');
-  const modalMessage = document.getElementById('modal-message');
-  const modalConfirmBtn = document.getElementById('modal-confirm-btn');
-  const modalCancelBtn = document.getElementById('modal-cancel-btn');
-
-  // --------- state ----------
-  let selectedDate = null;
-  let currentBookings = {};    // keyed by `${time}_${room}`
-  let allBookingsGrouped = {}; // grouped view
-  let currentUserId = sessionStorage.getItem('anonUserId') || null;
-  if (!currentUserId) {
-    currentUserId = cryptoLib.randomUUID();
-    sessionStorage.setItem('anonUserId', currentUserId);
-  }
-
-  // collection path segments (safer than a single slash string)
-  const BOOKINGS_COLLECTION_PATH = ['artifacts', appId, 'public', 'data', 'bookings'];
-
-  // Will hold unsubscribe function for current onSnapshot so we can restart safely
-  let currentUnsubscribe = null;
-
-  // ---------- Utilities ----------
-  function getDateOffset(days) {
-    const d = new Date();
-    d.setHours(0,0,0,0);
-    d.setDate(d.getDate() + days);
-    return d;
-  }
-  function formatDate(d) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  }
-
-  function generateTimeOptionsArray() {
-    const arr = [];
-    // from 08:00 (8*60) to 22:00 (22*60), step 30
-    for (let mins = 8 * 60; mins <= 22 * 60; mins += 30) {
-      const h = Math.floor(mins / 60);
-      const m = mins % 60;
-      arr.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
-    }
-    return arr;
-  }
-
-  function timeToMinutes(t) {
-    if (!t) return 0;
-    const [hh, mm] = t.split(':').map(Number);
-    return hh * 60 + mm;
-  }
-  function minutesToTime(m) {
-    const h = Math.floor(m / 60);
-    const mm = m % 60;
-    return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
-  }
-
-  function getSlotsInTimeRange(start, end) {
-    const startM = timeToMinutes(start);
-    const endM = timeToMinutes(end);
-    const out = [];
-    if (endM <= startM) return out;
-    for (let t = startM; t < endM; t += 30) {
-      out.push(minutesToTime(t));
-    }
-    return out;
-  }
-
-  function showMessage(text, type = 'info') {
-    messageBox.textContent = text;
-    messageBox.className = 'mt-4 text-center p-3 rounded-lg block';
-    if (type === 'success') {
-      messageBox.classList.add('bg-green-100','text-green-800','border','border-green-300');
-    } else if (type === 'error') {
-      messageBox.classList.add('bg-red-100','text-red-800','border','border-red-300');
+  const payload = { date, room, slot, name };
+  try {
+    const res = await fetch(api, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      status.textContent = 'Booking successful!';
+      status.className = 'success';
+      document.getElementById('name').value = '';
+      loadBookings();
     } else {
-      messageBox.classList.add('bg-white','text-gray-800','border','border-gray-200');
+      status.textContent = 'Booking failed: ' + (data.message||data.status||'unknown');
+      status.className = 'error';
     }
-    setTimeout(()=> messageBox.classList.add('hidden'), 5000);
+  } catch (err) {
+    console.error(err);
+    status.textContent = 'Booking failed — network error.';
+    status.className = 'error';
   }
+});
 
-  // ---------- initialization ----------
-  function initializeUI() {
-    const today = getDateOffset(0);
-    const maxDate = getDateOffset(2);
-    dateSelector.min = formatDate(today);
-    dateSelector.max = formatDate(maxDate);
-    selectedDate = formatDate(today);
-    dateSelector.value = selectedDate;
-    currentDateDisplay.textContent = selectedDate;
+// initial load
+loadBookings();
 
-    // populate time selects
-    const times = generateTimeOptionsArray();
-    // start: exclude the final time (22:00) as a start option so there's at least 30min end available
-    startTimeSelector.innerHTML = `<option value="" disabled selected>Select Start Time</option>` +
-      times.slice(0, -1).map(t => `<option value="${t}">${t}</option>`).join('');
-    // end: exclude first option (08:00) as an end only - we will filter dynamically
-    endTimeSelector.innerHTML = `<option value="" disabled selected>Select End Time</option>` +
-      times.slice(1).map(t => `<option value="${t}">${t}</option>`).join('');
+// optional: refresh bookings every 10s so public page updates
+setInterval(loadBookings, 10000);
+</script>
 
-    // load stored user name
-    userNameInput.value = localStorage.getItem('userName') || '';
-
-    // events
-    dateSelector.addEventListener('change', onDateChange);
-    roomSelector.addEventListener('change', onFormChange);
-    startTimeSelector.addEventListener('change', onStartTimeChange);
-    endTimeSelector.addEventListener('change', onFormChange);
-    userNameInput.addEventListener('input', onFormChange);
-    bookButton.addEventListener('click', handleBooking);
-
-    // initial status update and Firestore listener
-    updateSelectionStatus();
-    if (db) startBookingListener();
-  }
-
-  // ---------- form & UI handlers ----------
-  function onDateChange(e) {
-    selectedDate = dateSelector.value;
-    currentDateDisplay.textContent = selectedDate;
-    restartBookingListener();
-    updateSelectionStatus();
-  }
-
-  function onFormChange() {
-    // persist name immediately
-    const name = userNameInput.value.trim();
-    if (name) localStorage.setItem('userName', name);
-    updateSelectionStatus();
-  }
-
-  function onStartTimeChange() {
-    // When a start time is chosen, rebuild end-time options to only times strictly after start
-    const startVal = startTimeSelector.value;
-    const times = generateTimeOptionsArray();
-    let endHtml = `<option value="" disabled selected>Select End Time</option>`;
-    if (startVal) {
-      const startIdx = times.indexOf(startVal);
-      // end must be at least 30 minutes after start => times from startIdx+1 onwards
-      const allowedEndTimes = times.slice(startIdx + 1);
-      if (allowedEndTimes.length === 0) {
-        endHtml += `<option value="" disabled>No valid end times</option>`;
-      } else {
-        endHtml += allowedEndTimes.map(t => `<option value="${t}">${t}</option>`).join('');
-      }
-    } else {
-      endHtml += times.slice(1).map(t => `<option value="${t}">${t}</option>`).join('');
-    }
-    endTimeSelector.innerHTML = endHtml;
-    // clear chosen end time if it is now invalid
-    if (endTimeSelector.value && timeToMinutes(endTimeSelector.value) <= timeToMinutes(startVal)) {
-      endTimeSelector.value = "";
-    }
-    updateSelectionStatus();
-  }
-
-  // ---------- Firestore real-time listener ----------
-  function buildCollectionRefSegments() {
-    // returns something like collection(db, 'a','b','c','bookings')
-    return collection(db, ...BOOKINGS_COLLECTION_PATH);
-  }
-
-  function startBookingListener() {
-    if (!db || !selectedDate) return;
-    try {
-      const bookingsRef = buildCollectionRefSegments();
-      const q = query(bookingsRef, where('date', '==', selectedDate));
-      if (currentUnsubscribe) currentUnsubscribe(); // ensure no double listener
-      currentUnsubscribe = onSnapshot(q, snapshot => {
-        currentBookings = {};
-        const all = [];
-        snapshot.forEach(d => {
-          const data = d.data();
-          const key = `${data.startTime}_${data.room}`;
-          currentBookings[key] = { id: d.id, ...data };
-          all.push(currentBookings[key]);
-        });
-        groupAllBookings(all);
-        renderAllBookings();
-        updateSelectionStatus();
-      }, err => {
-        console.error('Snapshot error', err);
-        showMessage('Could not fetch bookings. See console for details.', 'error');
-      });
-    } catch (err) {
-      console.error('startBookingListener error', err);
-    }
-  }
-
-  function restartBookingListener() {
-    if (currentUnsubscribe) {
-      try { currentUnsubscribe(); } catch (e) { /* ignore */ }
-      currentUnsubscribe = null;
-    }
-    startBookingListener();
-  }
-
-  // ---------- grouping & rendering ----------
-  function groupAllBookings(bookings) {
-    const grouped = {};
-    // sort by bookingGroupId, room, startTime for deterministic grouping
-    bookings.sort((a, b) => {
-      if (a.bookingGroupId !== b.bookingGroupId) return (a.bookingGroupId || '').localeCompare(b.bookingGroupId || '');
-      if (a.room !== b.room) return (a.room || '').localeCompare(b.room || '');
-      return timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
-    });
-
-    bookings.forEach(booking => {
-      const gid = booking.bookingGroupId || booking.id;
-      if (!grouped[gid]) {
-        grouped[gid] = {
-          groupId: gid,
-          bookedAs: booking.bookedAs || booking.room,
-          rooms: {},
-          startTime: booking.startTime,
-          endTime: booking.startTime,
-          docIds: [],
-          bookerName: booking.bookerName,
-          userId: booking.userId
-        };
-      }
-      const group = grouped[gid];
-      if (!group.rooms[booking.room]) group.rooms[booking.room] = [];
-      group.rooms[booking.room].push(booking.startTime);
-      group.docIds.push(booking.id);
-
-      // update endTime to farthest slot end
-      const slotEnd = timeToMinutes(booking.startTime) + 30;
-      if (timeToMinutes(group.endTime) < slotEnd) {
-        group.endTime = minutesToTime(slotEnd);
-      }
-      // earliest start
-      if (timeToMinutes(booking.startTime) < timeToMinutes(group.startTime)) {
-        group.startTime = booking.startTime;
-      }
-    });
-
-    allBookingsGrouped = grouped;
-  }
-
-  function renderAllBookings() {
-    const arr = Object.values(allBookingsGrouped);
-    currentDateDisplay.textContent = selectedDate || '—';
-    if (!arr.length) {
-      allBookingsContainer.innerHTML = `<p class="p-4 text-gray-500 text-center">There are no active bookings for ${selectedDate}.</p>`;
-      return;
-    }
-
-    let html = `<table class="min-w-full divide-y divide-gray-200">
-      <thead class="bg-gray-50"><tr>
-        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Room(s)</th>
-        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Booked By</th>
-        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-      </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
-
-    arr.forEach(b => {
-      const roomNames = Object.keys(b.rooms).sort().join(' & ');
-      const isMine = b.userId === currentUserId;
-      const bookerDisplay = `${b.bookerName || 'Anonymous'}${isMine ? ' (You)': ''}`;
-      html += `<tr>
-        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${b.startTime} - ${b.endTime}</td>
-        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${b.bookedAs} (${roomNames})</td>
-        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${bookerDisplay}</td>
-        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">`;
-      if (isMine) {
-        html += `<button data-group-id="${b.groupId}" data-room="${b.bookedAs}" data-time="${b.startTime}" data-date="${selectedDate}" class="cancel-list-btn text-red-600 hover:text-red-900 font-semibold transition duration-150">Cancel Booking</button>`;
-      } else {
-        html += `<span class="text-gray-400">Other User's Booking</span>`;
-      }
-      html += `</td></tr>`;
-    });
-
-    html += `</tbody></table>`;
-    allBookingsContainer.innerHTML = html;
-
-    // hook up cancel buttons
-    document.querySelectorAll('.cancel-list-btn').forEach(btn => {
-      btn.addEventListener('click', handleDeleteBookingFromList);
-    });
-  }
-
-  // ---------- availability & booking ----------
-  function checkAvailabilityForSelection(startTime, endTime, room) {
-    const slots = getSlotsInTimeRange(startTime, endTime);
-    if (!slots.length) return false;
-    const roomsToCheck = (room === 'A+B') ? ['A','B'] : [room];
-    for (const s of slots) {
-      for (const r of roomsToCheck) {
-        if (currentBookings[`${s}_${r}`]) return false;
-      }
-    }
-    return true;
-  }
-
-  function resetForm() {
-    const today = formatDate(getDateOffset(0));
-    dateSelector.value = today;
-    selectedDate = today;
-    currentDateDisplay.textContent = selectedDate;
-    roomSelector.value = 'A';
-    startTimeSelector.value = '';
-    // rebuild end selector full
-    const times = generateTimeOptionsArray();
-    endTimeSelector.innerHTML = `<option value="" disabled selected>Select End Time</option>` + times.slice(1).map(t=>`<option value="${t}">${t}</option>`).join('');
-    updateSelectionStatus();
-    restartBookingListener();
-  }
-
-  function updateSelectionStatus() {
-    const name = userNameInput.value.trim();
-    const start = startTimeSelector.value;
-    const end = endTimeSelector.value;
-    const room = roomSelector.value;
-
-    if (!name) {
-      selectionStatus.className = 'text-center font-bold p-3 rounded-lg bg-orange-100 text-orange-800 border border-orange-300';
-      selectionStatus.innerHTML = '⚠️ Please enter your name to proceed.';
-      bookButton.disabled = true;
-      return;
-    }
-    if (!start || !end) {
-      selectionStatus.className = 'text-center font-bold p-3 rounded-lg bg-orange-100 text-orange-800 border border-orange-300';
-      selectionStatus.innerHTML = '⚠️ Please select both a valid start time and end time.';
-      bookButton.disabled = true;
-      return;
-    }
-    if (timeToMinutes(start) >= timeToMinutes(end)) {
-      selectionStatus.className = 'text-center font-bold p-3 rounded-lg bg-red-100 text-red-800 border border-red-300';
-      selectionStatus.innerHTML = '⚠️ End time must be after start time.';
-      bookButton.disabled = true;
-      return;
-    }
-    if (getSlotsInTimeRange(start, end).length === 0) {
-      selectionStatus.className = 'text-center font-bold p-3 rounded-lg bg-red-100 text-red-800 border border-red-300';
-      selectionStatus.innerHTML = '⚠️ Invalid time range selected (must be at least 30 minutes).';
-      bookButton.disabled = true;
-      return;
-    }
-
-    if (checkAvailabilityForSelection(start, end, room)) {
-      selectionStatus.className = 'text-center font-bold p-3 rounded-lg bg-green-100 text-green-800 border border-green-300';
-      selectionStatus.innerHTML = `✅ Room(s) ${room} are AVAILABLE for booking!`;
-      bookButton.disabled = false;
-      bookButton.textContent = 'Confirm Booking';
-    } else {
-      selectionStatus.className = 'text-center font-bold p-3 rounded-lg bg-red-100 text-red-800 border border-red-300';
-      selectionStatus.innerHTML = `❌ Room(s) ${room} are UNAVAILABLE in the selected range. Please adjust times or room.`;
-      bookButton.disabled = true;
-      bookButton.textContent = 'Check Availability & Book';
-    }
-  }
-
-  async function handleBooking() {
-    if (!db) return showMessage('Database not available. Cannot book.', 'error');
-
-    const bookerName = userNameInput.value.trim();
-    const start = startTimeSelector.value;
-    const end = endTimeSelector.value;
-    const room = roomSelector.value;
-
-    if (!bookerName || !start || !end || !selectedDate || !room) {
-      return showMessage('Please ensure all fields are filled correctly.', 'error');
-    }
-
-    if (!checkAvailabilityForSelection(start,end,room)) {
-      showMessage('Booking failed: selection conflicts with existing booking.', 'error');
-      updateSelectionStatus();
-      return;
-    }
-
-    bookButton.disabled = true;
-    bookButton.textContent = 'Processing Booking...';
-
-    try {
-      const batch = writeBatch(db);
-      const bookingGroupId = cryptoLib.randomUUID();
-      const roomsToBook = room === 'A+B' ? ['A','B'] : [room];
-      const slots = getSlotsInTimeRange(start, end);
-
-      for (const s of slots) {
-        for (const r of roomsToBook) {
-          const newDocRef = doc(collection(db, ...BOOKINGS_COLLECTION_PATH)); // auto-id
-          batch.set(newDocRef, {
-            date: selectedDate,
-            startTime: s,
-            room: r,
-            bookedAs: room,
-            bookingGroupId,
-            userId: currentUserId,
-            bookerName,
-            timestamp: new Date().toISOString(),
-            duration: 30
-          });
-        }
-      }
-      await batch.commit();
-      showMessage(`Successfully booked Room(s) ${room} from ${start} to ${end} on ${selectedDate}!`, 'success');
-      resetForm();
-    } catch (err) {
-      console.error('Booking error', err);
-      showMessage('Booking failed due to a system error. See console.', 'error');
-    } finally {
-      bookButton.textContent = 'Check Availability & Book';
-      updateSelectionStatus();
-    }
-  }
-
-  // ---------- deletion ----------
-  function handleDeleteBookingFromList(e) {
-    e.stopPropagation();
-    const btn = e.currentTarget;
-    const groupId = btn.dataset.groupId;
-    const bookedRoom = btn.dataset.room;
-    const time = btn.dataset.time;
-    const date = btn.dataset.date;
-
-    showConfirmModal(`Are you sure you want to cancel your booking for Room(s) ${bookedRoom} starting at ${time} on ${date}?`, () => {
-      handleDeleteBooking(groupId);
-    });
-  }
-
-  async function handleDeleteBooking(groupId) {
-    if (!db) return showMessage('Database not available. Cannot delete.', 'error');
-
-    try {
-      const batch = writeBatch(db);
-      // find doc ids in currentBookings matching groupId & user
-      const docs = [];
-      for (const key in currentBookings) {
-        const b = currentBookings[key];
-        if (b.bookingGroupId === groupId && b.userId === currentUserId) {
-          docs.push(b.id);
-        }
-      }
-      if (!docs.length) return showMessage('Cancellation failed: no documents found or permission denied.', 'error');
-
-      for (const id of docs) {
-        const docRef = doc(db, ...BOOKINGS_COLLECTION_PATH, id);
-        batch.delete(docRef);
-      }
-      await batch.commit();
-      showMessage('Entire booking group cancelled successfully.', 'success');
-    } catch (err) {
-      console.error('Deletion error', err);
-      showMessage('Cancellation failed: see console.', 'error');
-    }
-  }
-
-  // ---------- custom modal ----------
-  function showConfirmModal(message, onConfirm) {
-    modalMessage.textContent = message;
-    confirmationModal.classList.remove('hidden');
-
-    const handleConfirm = () => {
-      onConfirm();
-      confirmationModal.classList.add('hidden');
-      cleanup();
-    };
-    const handleCancel = () => {
-      confirmationModal.classList.add('hidden');
-      cleanup();
-    };
-
-    function cleanup() {
-      modalConfirmBtn.removeEventListener('click', handleConfirm);
-      modalCancelBtn.removeEventListener('click', handleCancel);
-    }
-    modalConfirmBtn.addEventListener('click', handleConfirm);
-    modalCancelBtn.addEventListener('click', handleCancel);
-  }
-
-  // ---------- startup ----------
-  document.addEventListener('DOMContentLoaded', initializeUI);
-  </script>
 </body>
 </html>
